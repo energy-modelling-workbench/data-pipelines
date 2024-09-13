@@ -1,0 +1,81 @@
+import spinedb_api as api
+from spinedb_api import DatabaseMapping
+import pandas as pd
+import sys
+from openpyxl import load_workbook
+import numpy as np
+import json 
+
+def add_entity(db_map : DatabaseMapping, class_name : str, name : str, ent_description = None) -> None:
+    _, error = db_map.add_entity_item(name=name, entity_class_name=class_name,description=ent_description)
+    if error is not None:
+        raise RuntimeError(error)
+
+def add_relationship(db_map : DatabaseMapping,class_name : str,element_names : str) -> None:
+    _, error = db_map.add_entity_item(element_name_list=element_names, entity_class_name=class_name)
+    if error is not None:
+        raise RuntimeError(error)
+    
+def add_parameter_value(db_map : DatabaseMapping,class_name : str,parameter : str,alternative : str,elements : tuple,value : any) -> None:
+    db_value, value_type = api.to_database(value)
+    _, error = db_map.add_parameter_value_item(entity_class_name=class_name,entity_byname=elements,parameter_definition_name=parameter,alternative_name=alternative,value=db_value,type=value_type)
+    if error:
+        raise RuntimeError(error)
+    
+def add_alternative(db_map : DatabaseMapping,name_alternative : str) -> None:
+    _, error = db_map.add_alternative_item(name=name_alternative)
+    if error is not None:
+        raise RuntimeError(error)
+    
+def main():
+    url_db_out = sys.argv[1]
+    bio_db = pd.read_csv(sys.argv[2]).fillna(0.0)
+
+    with DatabaseMapping(url_db_out) as db_map:
+        ## Empty the database
+        db_map.purge_items('entity')
+        db_map.purge_items('parameter_value')
+        db_map.purge_items('alternative')
+        db_map.purge_items('scenario')
+        db_map.refresh_session()
+        
+        add_alternative(db_map,"Base")
+        for scenario in bio_db["scenario"].unique():
+            add_alternative(db_map,scenario)
+            for commodity_i in bio_db["maincat"].unique():
+                commodity = commodity_i.replace(" ","_")
+                try:
+                    add_entity(db_map,"commodity",commodity)
+                except:
+                        pass
+                
+                for region_i in bio_db["nuts0"].unique():
+                    region = region_i if region_i != "EL" else "GR"
+
+                    try:
+                        add_entity(db_map,"region",region)
+                        add_parameter_value(db_map,"region","type","Base",(region,),"onshore")
+                        add_parameter_value(db_map,"region","GIS_level","Base",(region,),"PECD1")
+                    except:
+                        pass
+                    
+                    try:
+                        add_relationship(db_map,"commodity__region",(commodity,region))
+                    except:
+                        pass
+
+                    filter_db = bio_db[(bio_db.nuts0 == region_i)&(bio_db.maincat == commodity_i)&(bio_db.scenario == scenario)]
+                    
+                    value_converted = filter_db["quantity"].sum()*277777.77
+                    add_parameter_value(db_map,"commodity__region","annual_production",scenario,(commodity,region),round(value_converted,1))
+
+                    transport_cost = 7.0 # moving biomass to final destination, average value
+                    value_converted = np.dot(filter_db["quantity"].values,filter_db["roadsidecost"].values)/filter_db["quantity"].sum()/0.277778 + transport_cost if filter_db["quantity"].sum() > 0 else transport_cost
+                    add_parameter_value(db_map,"commodity__region","operational_cost",scenario,(commodity,region),round(value_converted,1))
+    
+        print("Biomass Data Added")
+
+        db_map.commit_session("entities added")
+
+if __name__ == "__main__":
+    main()

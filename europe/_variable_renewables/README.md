@@ -2,9 +2,9 @@
 
 Main features:
 
-1) The script is able to upload data for the historical years: 1995, 2008, and 2009.
+1) The script is able to upload data for the historical years: 1995, 2008, and 2009. This option could be modified manually.
 2) Floating wind turbines are not available yet.
-3) Files required are:
+3) Files required are: 
     * capacity_solar-PV-existing.xlsx 
     * capacity_wind-off-existing.xlsx 
     * capacity_wind-on-existing.xlsx 
@@ -30,5 +30,10 @@ Main features:
     * wind-on-SP335-HH100.csv
     * wind-on-SP335-HH150.csv
     * wind-on-SP335-HH200.csv
+
+Important notes:
+* Potential users should name the files in this manner.
+* SP = specific power (W/m2)
+* HH = hub height (m)
 
 The original data has been developed by [DTU wind](https://wind.dtu.dk/) by means of the tool [CorRES](https://corres.windenergy.dtu.dk/).
