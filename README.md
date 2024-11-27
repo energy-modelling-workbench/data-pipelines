@@ -5,7 +5,7 @@ The repository should not hold data itself, just scripts that can fetch and proc
 
 
 <img title="European flag" alt="Alt text" src="https://upload.wikimedia.org/wikipedia/commons/b/b7/Flag_of_Europe.svg" style="zoom:0.1;" align=left > 
-
+![|100](https://upload.wikimedia.org/wikipedia/commons/b/b7/Flag_of_Europe.svg)
 
 This project has received funding from the European Union's Horizon Programme under grant agreement No 101095998. 
 The sole responsibility of this publication lies with the authors. The European Union is not responsible for any use that may be made of the information contained therein.
