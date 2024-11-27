@@ -144,7 +144,7 @@ julia> include("biomass_dash.jl")
 
 and open in your browser the local port http://127.0.0.1:8050 (check the Julia prompt if it is listening to a different port)
 
-![dash example](.\dash_ex.png)
+![dash example](.\img\dash_ex.png)
 
 All data are saved in a temp folder. As GeoDataFrames as a driver constraints of not being able to overwrite existing .geojson file, files are created for each query, therefore, you may delete the entire folder once you are closing the dash.
 
