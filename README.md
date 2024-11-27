@@ -6,7 +6,7 @@ The repository should not hold data itself, just scripts that can fetch and proc
 
 ![European Flag](https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Flag_of_Europe.svg/96px-Flag_of_Europe.svg.png)
 
-This project has received funding from the European Union's Horizon Programme under grant agreement No 101095998. 
+*This project has received funding from the European Union's Horizon Programme under grant agreement No 101095998. 
 The sole responsibility of this publication lies with the authors. The European Union is not responsible for any use that may be made of the information contained therein.
 Every effort has been made to ensure complete and accurate information. 
-However, the author(s) and members of the consortium cannot be held legally responsible for any mistake or fault information.
+However, the author(s) and members of the consortium cannot be held legally responsible for any mistake or fault information.*
