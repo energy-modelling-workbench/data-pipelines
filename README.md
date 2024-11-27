@@ -4,7 +4,7 @@ Energy system data pipelines that can populate model instances in the ines forma
 The repository should not hold data itself, just scripts that can fetch and process data. Data can be stored e.g. in Zenodo when there is no reliable long term url for the data. The folder structure is fixed - one folder for global data pipelines, a folder for each continent and then sub-folders for countries or other regions within the continent. Sector level data should be marked with an preceding underscore to keep them up in the alphabetic order. The folder name should also indicate the datasource, e.g. data-pipelines/europe/_industry-aidres. Hopefully most data can be fetched at the highest level data is available.
 
 
-<img title="European flag" alt="Alt text" src="https://upload.wikimedia.org/wikipedia/commons/b/b7/Flag_of_Europe.svg" style="zoom:10%;" align=left > 
+<img title="European flag" alt="Alt text" src="https://upload.wikimedia.org/wikipedia/commons/b/b7/Flag_of_Europe.svg" style="zoom:0.1;" align=left > 
 
 
 This project has received funding from the European Union's Horizon Programme under grant agreement No 101095998. 
