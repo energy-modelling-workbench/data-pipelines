@@ -1,7 +1,7 @@
 using CSV, DataFrames,XLSX, SQLite, DataStructures, Logging, LoggingExtras, Dates
 include("downloads_file.jl")
 include("query_db_enspresso_costs.jl")
-collect_biomass_data(update=true)
+#collect_biomass_data(update=true)
 function collect_biomass_data(;update=nothing)
     # Declar variables
     filesep = Base.Filesystem.pathsep() ;
