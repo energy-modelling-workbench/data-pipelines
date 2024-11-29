@@ -81,17 +81,24 @@ julia> include("collect_biomass_data.jl")
 julia> collect_biomass_data(update=true)
 ```
 
-The runtime is around 2 min and the code will print the start and end of the generated database when finished. The version in this deliverable prints a table that has 194961 rows.
+The runtime is around 2 minutes and the code will print the start and end of the generated database when finished. The version in this deliverable prints a table that has 194961 rows.
 
-The fucntion will generate 
+The function will generate:
 
-* db_biomass_ener_mopo.csv - the result database in csv format with energy contents of biomass
-* db_biomass_mass_mopo.csv - the result database in csv format with weight of biomass
-* biomass.db sqlite database  - the result database in sqlite format
-* enspresso_costs.db - sqlite database that is needed to retrieve cost data
+- Download the original excel from all 3 sources, if the excel files are already in the folder structure, then it will skip the download
+  - ENSPRESO_BIOMASS.xlsx, ENSPRESO_SOLAR_PV_CSP.XLSX, ENSPRESO_WIND_ONSHORE_OFFSHORE.XLSX
+  - biomasspotentials_cantonal-level.xlsx, biomasspotentials_detailed_national-level.xlsx, biomasssupplycost.docx, domestic_biomass_potential_theoretic_sustainable_absolute-per-municipality.xlsx
+  - data_<country alpha code>.xlsx (37 excel files)
+
+The function will generate:
+
+* db_biomass_ener_mopo.csv - the result database in CSV format with energy contents of biomass
+* db_biomass_mass_mopo.csv - the result database in CSV format with the weight of biomass
+* biomass.db sqlite database  - the result database in SQLite format
+* enspresso_costs.db - SQLite database that is needed to retrieve cost data
 
 
-The function includes an optional argument for updating the enspresso database and it can be left out. In this case, you would run
+The function includes an optional argument for updating the Enspresso database and it can be left out. In this case, you would run
 
 ```julia
 julia> collect_biomass_data()
