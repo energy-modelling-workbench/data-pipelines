@@ -15,7 +15,7 @@ VTT Technical Research Centre of Finland
 The database is built over three main sources
 
 * S2Biom database from where most of the numbers come from
-* ENSPRESO database that we use for few energy sources that are not part of s2biom
+* ENSPRESO database that we use for a few energy sources that are not part of s2biom
 * National data for Switzerland
 
 Data processing is done with Julia code that has short documentation and additional databasePipeline.pdf
@@ -35,22 +35,22 @@ You first need to activate the environment where the project is installed
 
 `julia> cd("<The path to the project>")`
 
-Once you are within the project, you must activate it to make it effective. First, activate the packages by pressing is `]` in the julia REPL
+Once you are within the project, you must activate it to make it effective. First, activate the packages by pressing is `]` in the Julia REPL
 
-then to activate the current project, just add `.` at the end of the activate statement
+then to activate the current project, add `.` at the end of the activate statement
 
 ```julia
 (@v1.10) pkg> activate .
 ```
 
-press backspace to exit Pkg prompt.
+Press backspace to exit the Pkg prompt.
 
 
 #### Installing required packages
 
 When running the file for the first time, ensure you have the following packages installed in your local environment.
 
-CSV, DataFrames,XLSX, SQLite, DataStructures, Logging, LoggingExtras, Dates, Shapefile, ZipFile, Plots
+CSV, DataFrames, XLSX, SQLite, DataStructures, Logging, LoggingExtras, Dates, Shapefile, ZipFile, Plots
 
 An easy way to add all packages is to call the packages.jl file that will install all the required packages in the environment
 
@@ -58,9 +58,9 @@ An easy way to add all packages is to call the packages.jl file that will instal
 julia> include("packages.jl")
 ```
 
-When testing, there was 239 dependencies in total and it takes up to 4 min to compile the file depending how many you already have installed. 
+When testing, there were 239 dependencies in total and it takes up to 4 min to compile the file depending on how many you already have installed. 
 
-Packages can be installed separately with  `import Pkg; Pkg.add("<package to install>")` for each missing package.
+Packages can be installed separately with `import Pkg; Pkg.add("<package to install>")` for each missing package.
 
 Note: PlotlyJS might fail to compile as it seems to have its difficulties. You can try to reinstall it separately, and/or remove the package first and then reinstall.
 
@@ -76,17 +76,19 @@ julia> include("collect_biomass_data.jl")
 julia> collect_biomass_data(update=true)
 ```
 
-The runtime is around 2 min and the code will print the start and end of the generated database when finished. The version in this deliverable prints a table that has 194961 rows.
+It will download the Excel file from the 3 databases. One modification is needed from the Enspreso database
 
-The fucntion will generate 
+The runtime is around 2 minutes and the code will print the start and end of the generated database when finished. The version in this deliverable prints a table with 194961 rows.
 
-* db_biomass_ener_mopo.csv - the result database in csv format with energy contents of biomass
-* db_biomass_mass_mopo.csv - the result database in csv format with weight of biomass
-* biomass.db sqlite database  - the result database in sqlite format
-* enspresso_costs.db - sqlite database that is needed to retrieve cost data
+The function will generate 
+
+* db_biomass_ener_mopo.csv - the result database in CSV format with energy contents of biomass
+* db_biomass_mass_mopo.csv - the result database in CSV format with the weight of biomass
+* biomass.db sqlite database  - the result database in SQLite format
+* enspresso_costs.db - SQLite database that is needed to retrieve cost data
 
 
-The function includes an optional argument for updating the enspresso database and it can be left out. In this case, you would run
+The function includes an optional argument for updating the Enspresso database and it can be left out. In this case, you would run
 
 ```julia
 julia> collect_biomass_data()
@@ -103,16 +105,16 @@ Activate the Julia environment as above.
 
 #### pdf
 
-There is a specific function to draw maps from the dataset as pdfs. The layout is not too polished, but this allows an easy conversion to e.g. illustrator, Inkscape.
+There is a specific function to draw maps from the dataset as PDFs. The layout is not too polished, but this allows an easy conversion to e.g. illustrator, Inkscape.
 
 ```julia
 julia> include("mapping_html.jl")
 julia> mapping_html()
 ```
 
-This reads either the precompiled database part or an updated database from the same folder, saves the generated map as .pdf, and should open it with your default pdf viewer.
+This reads either the precompiled database part or an updated database from the same folder, saves the generated map as .pdf, and should open it with your default PDF viewer.
 
-The fuctions has following arguments:
+The function has the following arguments:
 
 * res = nuts0, nuts1, nuts2, nuts3. Default = nuts3
 * scenario = high, medium, low. Default = high
@@ -132,7 +134,7 @@ julia> include("mapping_pdf.jl")
 julia> mapping_pdf()
 ```
 
-This saves the generated map as .html file and should open it in your default browser. It has the same arguments as above.
+This saves the generated map as a .html file and should open it in your default browser. It has the same arguments as above.
 
 #### dash
 
@@ -146,7 +148,7 @@ and open in your browser the local port http://127.0.0.1:8050 (check the Julia p
 
 ![dash example](./img/dash_ex.png)
 
-All data are saved in a temp folder. As GeoDataFrames as a driver constraints of not being able to overwrite existing .geojson file, files are created for each query, therefore, you may delete the entire folder once you are closing the dash.
+All data are saved in a temp folder. As GeoDataFrames has a driver constraints of not being able to overwrite existing .geojson files, files are created for each query, therefore, you may delete the entire folder once you are closing the dash.
 
 
 
@@ -154,9 +156,9 @@ All data are saved in a temp folder. As GeoDataFrames as a driver constraints of
 
 Data aggregation for ENTSO-E bidding zones can be done with nuts_bidding_zone.csv that has a mapping of (nuts3, nuts2, bidding zone).
 
-Aggregated data can be plotted on shape file in entsoe_shp folder.
+Aggregated data can be plotted on the shape file in the entsoe_shp folder.
 
-Alternatively, the file get_data.jl has automated function for this 
+Alternatively, the file get_data.jl has an automated function for this 
 
 ```
 query_db2(;type_id=nothing, nuts=nothing, maincat=nothing, entsoe_nuts=nothing, scenario=nothing, year=nothing)
@@ -164,7 +166,7 @@ query_db2(;type_id=nothing, nuts=nothing, maincat=nothing, entsoe_nuts=nothing, 
 
 
 
-## Setting constraints on maximum allowed national amounts
+## Setting constraints on the maximum allowed national amounts
 
 It is very important to understand that this database contains technical potential instead of allowed amounts.
 
@@ -175,8 +177,8 @@ comparison_biofuel_amounts.xlsx shows
 * total national biomass use from IEA statistics for all countries vs. this database
 * total national biomass use by main category from Eurostat for all countries vs. this database
 
-Most of the countries currently use below 50% of their estimated total potential. This is due to other regulation, transport costs, and difficult energy sources especially in the agriculture.
+Most of the countries currently use below 50% of their estimated total potential. This is due to other regulations, transport costs, and difficult energy sources, especially in the agriculture.
 
 And as it often goes when comparing statistics and databases, some countries use up to 300% of their estimated potential. 
 
-This file can be used as a guidance when deciding appropriate national constraints for the modelling.
+This file can be used as guidance when deciding appropriate national constraints for the modelling.
