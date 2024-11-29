@@ -3,10 +3,10 @@ using DataFrames, PlotlyJS, CSV, SQLite, DataStructures
 
 include("mapping_html.jl")
 
-csv_data = download("https://raw.githubusercontent.com/plotly/datasets/master/gapminderDataFiveYear.csv")
-df = CSV.read(csv_data, DataFrame)
+#csv_data = download("https://raw.githubusercontent.com/plotly/datasets/master/gapminderDataFiveYear.csv")
+#df = CSV.read(csv_data, DataFrame)
 
-years = unique(df[!, :year])
+#years = unique(df[!, :year])
 
 # Declare the dash board 
 app = dash()
@@ -66,4 +66,4 @@ callback!(
     end
     
 
-run_server(app, "0.0.0.0", debug=true)
+run_server(app, "0.0.0.0", debug=false)

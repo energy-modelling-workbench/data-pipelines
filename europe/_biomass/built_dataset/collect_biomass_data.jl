@@ -1,5 +1,7 @@
 using CSV, DataFrames,XLSX, SQLite, DataStructures, Logging, LoggingExtras, Dates
+include("downloads_file.jl")
 include("query_db_enspresso_costs.jl")
+collect_biomass_data(update=true)
 function collect_biomass_data(;update=nothing)
     # Declar variables
     filesep = Base.Filesystem.pathsep() ;
@@ -7,7 +9,7 @@ function collect_biomass_data(;update=nothing)
     cd(rootfolder) ;
     subfolder = "cost_supply_data" ;
     subfolderCH = "swiss database" ;
-    enspresso  = "ENSPRESO_BIOMASS.xlsx" ;
+    enspresso  = "./enspreso/ENSPRESO_BIOMASS.xlsx" ;
     file = readdir(subfolder) ;
     fileCH = readdir(subfolderCH) ;
     
@@ -314,6 +316,7 @@ function collect_biomass_data(;update=nothing)
     end
 
     function parse2tableCH(finaldf, data, rownames, codedef, md, entsoe_nuts, convert, conversion_s2biom,conversion_CH,includeyear)
+        # Exchange rate can be modified or use an api if needed
         exchange_rate = 0.8661 ;
         for i=1:size(data,1), j=1:size(data,2)
             type_id_temp  = names(data)[j] ;
@@ -336,6 +339,7 @@ function collect_biomass_data(;update=nothing)
             nuts2 = rownames[i][1:end-1] ;
             nuts1 = rownames[i][1:end-2] ;
             nuts0 = rownames[i][1:end-3] ;
+            #println(nuts3)
             entsoe_zone = entsoe_nuts[entsoe_nuts.nuts3 .== nuts3, "bidding_zone"][1] ;
             quantity = data[!,names(data)[j]][i] / 1e6;
             conversion  = filter(row -> row.type_id==type_id, conversion_s2biom) ;
@@ -430,6 +434,7 @@ function collect_biomass_data(;update=nothing)
     # Add Switzerland into the database
     function refined_ener_switzerland_db(file, subfolder,filesep, entsoe_nuts, codedef, conversion_s2biom, conversion_CH,includeyear)
         # Start the code
+        println("   ... creating the table in the database")
         if includeyear
             db_biomass = df_param() ;
         else
@@ -437,9 +442,12 @@ function collect_biomass_data(;update=nothing)
         end
         #db_biomass = copy(temp_db_biomass) ;
         b          = copy(db_biomass)    ; 
-
+        # Load the equivalence table
+        println("   ... Load the equivalence table")
+        CH_nuts = CSV.read("CH_nuts.csv", DataFrame; delim = ';')
         for nfile in eachindex(file)
             if cmp(file[nfile], "biomasspotentials_cantonal-level.xlsx") == 0
+                println("   ... Load the excel table")
                 xf = XLSX.readxlsx(subfolder * filesep * file[nfile]) ;
                 #println(file[nfile]);
                 for n in eachindex(xf.workbook.sheets)
@@ -448,9 +456,11 @@ function collect_biomass_data(;update=nothing)
                     if length(md) > 1
                         if cmp(md[2], "GJ") == 0
                             if cmp(md[1], "TheoreticalPotential") == 0 # tech is used only for agrictulture and waste, HIGH for forestry
+                                println("   ... importing the high scenario")
                                 md[1] = "high" ;
                                 convert = "all" ;
                             elseif cmp(md[1], "SustainablePotential") == 0
+                                println("   ... importing the medium scenario")
                                 md[1] = "medium" ;
                                 convert = "all" ;
                                 # In this case, duplicate the values to create the low scenario
@@ -459,19 +469,24 @@ function collect_biomass_data(;update=nothing)
                             end
                             sh = xf[n]   ;
                             m  = sh[:]   ;
-                            df = DataFrame([something.(col, missing) for col in eachcol(m[7:end-1, 3:end])], Symbol.(m[6,3:end]), makeunique=true) ;
+                            println("   ... loading the table in a dataframe")
+                            df = DataFrame([something.(col, missing) for col in eachcol(m[7:32, 2:end])], Symbol.(m[6,2:end]), makeunique=true) ;
                             df1  = DataFrame() ;
                             foreach(
                                         x->all(ismissing, df[!, x]) ? nothing : df1[!, x] = df[!, x],
                                         propertynames(df)
                                     )
+                            #println(df1)
                             if cmp(md[1],"medium") == 0
                                 # create a loop to do it twice, once for the medium and once for the low profile
-                                db_biomass = parse2tableCH(b, df1, m[7:end-1,2], codedef, md, entsoe_nuts, convert, conversion_s2biom,conversion_CH, includeyear)  
+                                println("   ... importing the medium scenario into the database")
+                                db_biomass = parse2tableCH(b, df1, CH_nuts.nuts, codedef, md, entsoe_nuts, convert, conversion_s2biom,conversion_CH, includeyear)  
                                 md[1] = "low" ;
-                                db_biomass = parse2tableCH(b, df1, m[7:end-1,2], codedef, md, entsoe_nuts, convert, conversion_s2biom,conversion_CH, includeyear)  
+                                println("   ... importing the low scenario into the database")
+                                db_biomass = parse2tableCH(b, df1, CH_nuts.nuts, codedef, md, entsoe_nuts, convert, conversion_s2biom,conversion_CH, includeyear)  
                             else
-                                db_biomass = parse2tableCH(b, df1, m[7:end-1,2], codedef, md, entsoe_nuts, convert, conversion_s2biom,conversion_CH, includeyear)  
+                                println("   ... importing the scenario into the database")
+                                db_biomass = parse2tableCH(b, df1, CH_nuts.nuts, codedef, md, entsoe_nuts, convert, conversion_s2biom,conversion_CH, includeyear)  
                             end
                         end        
                     end  
@@ -573,13 +588,23 @@ function collect_biomass_data(;update=nothing)
                                 cat = subd_conv.MOPO_db_cat_id[1] ;
                                 nuts3 = "-" ;
                                 nuts2 = rowin.NUTS2 ;
+                                if length(nuts2) == 2
+                                    # This means that there is a mistake in the enspreso database and needs to be fixed country by country
+                                    if cmp(nuts2, "ME") == 0 || cmp(nuts2, "RS") == 0 || cmp(nuts2, "UA") == 0 || cmp(nuts2, "AL") == 0 || cmp(nuts2, "BA") == 0
+                                        nuts2 = nuts2*"11"
+                                    elseif cmp(nuts2, "MK") == 0 || cmp(nuts2, "XK") == 0
+                                        nuts2 = nuts2*"00"
+                                    end
+                                end
                                 nuts0 = rowin.NUTS0 ;
                                 if cmp(rowin.NUTS2,"-") == 0
                                     nuts1 = rowin.NUTS2 ;
                                     entsoe_zone = rowin.NUTS0 ;
                                 else
                                     nuts1 = rowin.NUTS2[1:end-1] ;
+                                    #println(nuts1)
                                     a = filter(row -> row.nuts2==nuts2, entsoe_nuts) ;
+                                    #println(a)
                                     entsoe_zone = a.bidding_zone[1] ;
                                 end
 
@@ -720,12 +745,15 @@ function collect_biomass_data(;update=nothing)
     end
     biomass_mass_mopo = refined_mass_db(file, subfolder,filesep, entsoe_nuts, codedef, conversion_s2biom,includeyear) ;
     biomass_ener_s2biom = refined_ener_db(biomass_mass_mopo, conversion_s2biom,entsoe_nuts,includeyear) ;
+    println("... s2biom database uploaded to the database")
     biomass_ener_CH   = refined_ener_switzerland_db(fileCH, subfolderCH,filesep, entsoe_nuts, codedef, conversion_s2biom, conversion_CH,includeyear)
+    println("... switzerland database uploaded to the database")
     biomass_ener_mopo = vcat(biomass_ener_s2biom, biomass_ener_CH, cols=:union) ;
 
     # Method for getting the data out from enspresso database to s2biom compatible
     sheetname = "ENER - NUTS2 BioCom E" ;
     biomassenspresso = enspresso_conversion(enspresso, codedef, enspressocountry, sheetname, enspresso_mopo, entsoe_nuts,includeyear,conversion_s2biom)
+    println("... enspreso database uploaded to the database")
     biomass_ener_mopo = vcat(biomass_ener_mopo, biomassenspresso, cols=:union) ;  
 
     # Collect data for manure and sludge from enspresso for countries
