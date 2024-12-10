@@ -119,9 +119,9 @@ def demand_sectors(target_db,sheet):
         entity_byname = (sheet.at[i,"to_node"],sheet.at[i,"nuts3"])
         add_entity(target_db, entity_name, entity_byname)
         map_param = {"type": "map", "index_type": "str", "index_name": "year", "data": {}}
-        map_param["data"][2030] = float(sheet.at[i,"2030"])
-        map_param["data"][2050] = (sheet.at[i,"2030"])
-        map_param["data"][2040] = (map_param["data"][2030] + map_param["data"][2050])/2
+        map_param["data"]["2030"] = float(sheet.at[i,"2030"])
+        map_param["data"]["2050"] = (sheet.at[i,"2030"])
+        map_param["data"]["2040"] = (map_param["data"]["2030"] + map_param["data"]["2050"])/2
         add_parameter_value(target_db, entity_name, "annual_demand", "Base", entity_byname, map_param)
                
 
