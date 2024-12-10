@@ -28,10 +28,12 @@ def add_alternative(db_map : DatabaseMapping,name_alternative : str) -> None:
         raise RuntimeError(error)
     
 def main():
+
     url_db_out = sys.argv[1]
     bio_db = pd.read_csv(sys.argv[2]).fillna(0.0)
 
     with DatabaseMapping(url_db_out) as db_map:
+        
         ## Empty the database
         db_map.purge_items('entity')
         db_map.purge_items('parameter_value')
@@ -40,39 +42,35 @@ def main():
         db_map.refresh_session()
         
         add_alternative(db_map,"Base")
+        add_entity(db_map,"commodity","bio")
+        add_entity(db_map,"technology","biomass-gen")
         for scenario in bio_db["scenario"].unique():
             add_alternative(db_map,scenario)
-            for commodity_i in bio_db["maincat"].unique():
-                commodity = commodity_i.replace(" ","_")
+
+            for region_i in bio_db["nuts0"].unique():
+                region = region_i if region_i != "EL" else "GR"
+
                 try:
-                    add_entity(db_map,"commodity",commodity)
+                    add_entity(db_map,"region",region)
+                    add_parameter_value(db_map,"region","type","Base",(region,),"onshore")
+                    add_parameter_value(db_map,"region","GIS_level","Base",(region,),"PECD1")
                 except:
-                        pass
+                    pass
                 
-                for region_i in bio_db["nuts0"].unique():
-                    region = region_i if region_i != "EL" else "GR"
+                try:
+                    add_relationship(db_map,"technology__to_commodity__region",("biomass-gen","bio",region))
+                except:
+                    pass
 
-                    try:
-                        add_entity(db_map,"region",region)
-                        add_parameter_value(db_map,"region","type","Base",(region,),"onshore")
-                        add_parameter_value(db_map,"region","GIS_level","Base",(region,),"PECD1")
-                    except:
-                        pass
-                    
-                    try:
-                        add_relationship(db_map,"commodity__region",(commodity,region))
-                    except:
-                        pass
+                filter_db = bio_db[(bio_db.nuts0 == region_i)&(bio_db.scenario == scenario)]
+                
+                value_converted = filter_db["quantity"].sum()*277777.77
+                add_parameter_value(db_map,"technology__to_commodity__region","annual_production",scenario,("biomass-gen","bio",region),round(value_converted,1))
 
-                    filter_db = bio_db[(bio_db.nuts0 == region_i)&(bio_db.maincat == commodity_i)&(bio_db.scenario == scenario)]
-                    
-                    value_converted = filter_db["quantity"].sum()*277777.77
-                    add_parameter_value(db_map,"commodity__region","annual_production",scenario,(commodity,region),round(value_converted,1))
+                transport_cost = 7.0 # moving biomass to final destination, average value
+                value_converted = np.dot(filter_db["quantity"].values,filter_db["roadsidecost"].values)/filter_db["quantity"].sum()/0.277778 + transport_cost if filter_db["quantity"].sum() > 0 else transport_cost
+                add_parameter_value(db_map,"technology__to_commodity__region","operational_cost",scenario,("biomass-gen","bio",region),round(value_converted,1))
 
-                    transport_cost = 7.0 # moving biomass to final destination, average value
-                    value_converted = np.dot(filter_db["quantity"].values,filter_db["roadsidecost"].values)/filter_db["quantity"].sum()/0.277778 + transport_cost if filter_db["quantity"].sum() > 0 else transport_cost
-                    add_parameter_value(db_map,"commodity__region","operational_cost",scenario,(commodity,region),round(value_converted,1))
-    
         print("Biomass Data Added")
 
         db_map.commit_session("entities added")
