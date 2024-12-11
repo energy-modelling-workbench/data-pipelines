@@ -2,14 +2,12 @@ import spinedb_api as api
 from spinedb_api import DatabaseMapping
 import datetime
 import pandas as pd
-import geopandas as gpd
 import sys
-from openpyxl import load_workbook
 import numpy as np
 import json
 
-def add_entity(db_map : DatabaseMapping, class_name : str, name : str, ent_description = None) -> None:
-    _, error = db_map.add_entity_item(name=name, entity_class_name=class_name, description = ent_description)
+def add_entity(db_map : DatabaseMapping, class_name : str, entity_byname : str, ent_description = None) -> None:
+    _, error = db_map.add_entity_item(entity_byname=entity_byname, entity_class_name=class_name, description = ent_description)
     if error is not None:
         raise RuntimeError(error)
 
@@ -17,11 +15,6 @@ def add_parameter_value(db_map : DatabaseMapping,class_name : str,parameter : st
     db_value, value_type = api.to_database(value)
     _, error = db_map.add_parameter_value_item(entity_class_name=class_name,entity_byname=elements,parameter_definition_name=parameter,alternative_name=alternative,value=db_value,type=value_type)
     if error:
-        raise RuntimeError(error)
-
-def add_relationship(db_map : DatabaseMapping,class_name : str,element_names : tuple, rel_name = None, rel_description = None) -> None:
-    _, error = db_map.add_entity_item(element_name_list=element_names, entity_class_name=class_name, name=rel_name, description = rel_description)
-    if error is not None:
         raise RuntimeError(error)
 
 def add_alternative(db_map : DatabaseMapping,name_alternative : str) -> None:
@@ -36,40 +29,44 @@ def time_index(year) -> list:
     time_list["iso"]  = [i.isoformat() for i in pd_range]
     return time_list["standard"], time_list["iso"]
 
+def read_excel_data(file_name, sheet_name, index_col, column):
+    return pd.read_excel(file_name, sheet_name=sheet_name, index_col=index_col)[column]
 
-if __name__ == "__main__":
+def add_region(db_map, poly, region_type, gis_level):
+    try:
+        add_entity(db_map, "region", (poly,))
+        add_parameter_value(db_map, "region", "type", "Base", (poly,), region_type)
+        add_parameter_value(db_map, "region", "GIS_level", "Base", (poly,), gis_level)
+    except Exception as e:
+        pass#print(f"Error adding region {poly}: {e}")
+
+def add_technology_relationship(db_map, tech_type, tech, poly, potential, availability, CY_index):
+    try:
+        add_entity(db_map, "technology_type__region", (tech_type, poly))
+        add_parameter_value(db_map, "technology_type__region", "potential", "Base", (tech_type, poly), round(float(potential) * 1e3, 1))
+    except Exception as e:
+        pass#print(f"Error adding technology relationship {tech_type} for {poly}: {e}")
+
+    profile = {"type": "time_series", "data": dict(zip(CY_index["iso"], availability.loc[CY_index["standard"], poly].round(3).tolist()))}
+    add_entity(db_map, "technology__to_commodity__region", (tech, "elec",poly))
+    add_parameter_value(db_map, "technology__to_commodity__region", "profile_limit_upper", "Base", (tech, "elec",poly), profile)
+
+def main():
 
     url_db_out = sys.argv[1]
-
-    exparent_wind_on   = pd.read_excel("capacity_wind-on-existing.xlsx",sheet_name="Country_level",index_col=0)[2025]
-    exparent_solar_PV  = pd.read_excel("capacity_solar-PV-existing.xlsx",sheet_name="Country_level",index_col=0)[2025]
-    existing_wind_on   = pd.read_excel("capacity_wind-on-existing.xlsx",sheet_name="Regional",index_col=0)[2025]
-    existing_wind_off  = pd.read_excel("capacity_wind-off-existing.xlsx",sheet_name="Regional",index_col=0)[2025]
-    existing_solar_PV  = pd.read_excel("capacity_solar-PV-existing.xlsx",sheet_name="Regional",index_col=0)[2025]
-    potential_wind_on  = pd.read_excel("potential_wind-on.xlsx",index_col=0)["Greenfield_potential_GW"]
-    potential_wind_off = pd.read_excel("potential_wind-off.xlsx",index_col=0)["Greenfield_potential_GW"]
-    potential_solar_PV = pd.read_excel("potential_solar-PV.xlsx",index_col=0)["Greenfield_potential_GW"]
     
-    poparent_wind_on  = pd.Series(0.0,index=list(set([i[:2] for i in potential_wind_on.index])))
-    poparent_wind_off = pd.Series(0.0,index=list(set([i[:4] for i in potential_wind_off.index])))
-    poparent_solar_PV = pd.Series(0.0,index=list(set([i[:2] for i in potential_solar_PV.index])))
-    exparent_wind_off = pd.Series(0.0,index=list(set([i[:4] for i in existing_wind_off.index])))
+    existing_wind_on = read_excel_data("capacity_wind-on-existing.xlsx", "Regional", 0, 2025)
+    existing_wind_off = read_excel_data("capacity_wind-off-existing.xlsx", "Regional", 0, 2025)
+    existing_solar_PV = read_excel_data("capacity_solar-PV-existing.xlsx", "Regional", 0, 2025)
+    potential_wind_on = read_excel_data("potential_wind-on.xlsx", "Data", 0, "Greenfield_potential_GW")
+    potential_wind_off = read_excel_data("potential_wind-off.xlsx", "Data", 0, "Greenfield_potential_GW")
+    potential_solar_PV = read_excel_data("potential_solar-PV.xlsx", "Data", 0, "Greenfield_potential_GW")
 
-
-    for i in potential_wind_on.index:
-        poparent_wind_on.loc[i[:2]] += potential_wind_on.at[i]
-    for i in potential_wind_off.index:
-        poparent_wind_off.loc[i[:4]] += potential_wind_off.at[i]
-    for i in potential_solar_PV.index:
-        poparent_solar_PV.loc[i[:2]] += potential_solar_PV.at[i]
-    for i in existing_wind_off.index:
-        exparent_wind_off.loc[i[:4]] += existing_wind_off.at[i]
-
+    # Read VRE costs
     vre_cost = pd.read_csv("VRE_costs.csv",index_col=0)
 
-    availability = {}
-    for tech in vre_cost.index:
-        availability[tech] = pd.read_csv(tech+".csv",index_col=0)
+    # Read availability data
+    availability = {tech: pd.read_csv(f"{tech}.csv", index_col=0) for tech in vre_cost.index}
 
     print("Data loaded")
 
@@ -92,47 +89,41 @@ if __name__ == "__main__":
             CY_index["iso"]      += indexes[1]
             CY_index["standard"] += indexes[0]
 
-        add_entity(db_map,"technology_type","wind-on")
-        add_entity(db_map,"technology_type","wind-off")
-        add_entity(db_map,"technology_type","solar-PV")
+        add_entity(db_map,"commodity",("elec",))
+        add_entity(db_map,"technology_type",("wind-on",))
+        add_entity(db_map,"technology_type",("wind-off",))
+        add_entity(db_map,"technology_type",("solar-PV",))
 
+        vre_cost.fillna(0.0,inplace=True)
         for tech in vre_cost.index:
-            add_entity(db_map,"technology",tech)
-            add_relationship(db_map,"technology_type__technology",("wind-on",tech))
-            map_icost = map = {"type":"map","index_type":"str","index_name":"year","data":{year:round(vre_cost.at[tech,"capex_"+year]*1e6,1) for year in ["2030","2040","2050"]}}
-            map_fcost = map = {"type":"map","index_type":"str","index_name":"year","data":{year:vre_cost.at[tech,"fom_"+year] for year in ["2030","2040","2050"]}}
-            map_vcost = map = {"type":"map","index_type":"str","index_name":"year","data":{year:vre_cost.at[tech,"vom_"+year] for year in ["2030","2040","2050"]}}
-            add_parameter_value(db_map,"technology","investment_cost","Base",(tech,),map_icost)
-            add_parameter_value(db_map,"technology","fixed_cost","Base",(tech,),map_fcost)
-            add_parameter_value(db_map,"technology","operational_cost","Base",(tech,),map_vcost)
-            add_parameter_value(db_map,"technology","lifetime","Base",(tech,),vre_cost.at[tech,"lifetime"])
+            add_entity(db_map,"technology",(tech,))
+            add_entity(db_map,"technology__to_commodity",(tech,"elec"))
+            tech_type = "wind-on" if "wind-on" in tech else ("wind-off" if "wind-off" in tech else "solar-PV")
+            add_entity(db_map,"technology_type__technology",(tech_type,tech))
+
+            map_icost = {"type":"map","index_type":"str","index_name":"year","data":{year:round(float(vre_cost.at[tech,"capex_"+year])*1e6,1) for year in ["2030","2040","2050"] if vre_cost.at[tech,"capex_"+year] != 0.0}}
+            map_fcost = {"type":"map","index_type":"str","index_name":"year","data":{year:float(vre_cost.at[tech,"fom_"+year]) for year in ["2030","2040","2050"] if vre_cost.at[tech,"fom_"+year] != 0.0}}
+            map_vcost = {"type":"map","index_type":"str","index_name":"year","data":{year:float(vre_cost.at[tech,"vom_"+year]) for year in ["2030","2040","2050"] if vre_cost.at[tech,"vom_"+year] != 0.0}}
+            
+            if bool(map_icost["data"]):
+                add_parameter_value(db_map,"technology__to_commodity","investment_cost","Base",(tech,"elec"),map_icost)
+            if bool(map_fcost["data"]):
+                add_parameter_value(db_map,"technology__to_commodity","fixed_cost","Base",(tech,"elec"),map_fcost)
+            if bool(map_vcost["data"]):
+                add_parameter_value(db_map,"technology__to_commodity","operational_cost","Base",(tech,"elec"),map_vcost)
+            add_parameter_value(db_map,"technology","lifetime","Base",(tech,),float(vre_cost.at[tech,"lifetime"]))
 
         ## ONSHORE EXISTING
         for poly in existing_wind_on.index:
             tech = "wind-on-existing"
             if existing_wind_on.round(2).at[poly] > 0 and poly in availability[tech].columns:
 
-                try:
-                    add_entity(db_map,"region",poly)
-                    add_parameter_value(db_map,"region","type","Base",(poly,),"onshore")
-                    add_parameter_value(db_map,"region","GIS_level","Base",(poly,),"PECD2")
-                except:
-                    pass
-                try:
-                    add_relationship(db_map,"technology_type__region",("wind-on",poly))
-                    add_parameter_value(db_map,"technology_type__region","greenfield_potentials","Base",("wind-on",poly),round(float(potential_wind_on.at[poly])*1e3,1))
-                except:
-                    pass
+                add_region(db_map, poly, "onshore", "PECD2")
+                add_technology_relationship(db_map, "wind-on", tech, poly, potential_wind_on.at[poly] - (existing_wind_on.at[poly] if poly in existing_wind_on.index else 0.0), availability[tech], CY_index)
 
-                weight = {"type":"map","index_type":"str","index_name":"to_level","data":{"PECD1":round(existing_wind_on.at[poly]/exparent_wind_on.at[poly[:2]],3)}}
                 existing = round(float(existing_wind_on.at[poly]*1e3),1)
-                profile = {"type":"time_series","data": dict(zip(CY_index["iso"],availability[tech].loc[CY_index["standard"],poly].round(3).tolist()))}
-                
-                add_relationship(db_map,"technology__region",(tech,poly))
-                add_parameter_value(db_map,"technology__region","units_existing","Base",(tech,poly),existing)              
-                add_parameter_value(db_map,"technology__region","weight_profile_upper_limit","Base",(tech,poly),weight)    
-                add_parameter_value(db_map,"technology__region","profile_upper_limit","Base",(tech,poly),profile)
-
+                add_entity(db_map,"technology__region",(tech,poly))
+                add_parameter_value(db_map,"technology__region","units_existing","Base",(tech,poly),existing)                
         print("existing_wind_onshore")
 
         ## ONSHORE FUTURE
@@ -140,54 +131,22 @@ if __name__ == "__main__":
         for tech in technologies:
             for poly in availability[tech].columns:
                 if poly in potential_wind_on.index:
-                    try:
-                        add_entity(db_map,"region",poly)
-                        add_parameter_value(db_map,"region","type","Base",(poly,),"onshore")
-                        add_parameter_value(db_map,"region","GIS_level","Base",(poly,),"PECD2")
-                    except:
-                        pass
-                    try:
-                        add_relationship(db_map,"technology_type__region",("wind-on",poly))
-                        add_parameter_value(db_map,"technology_type__region","greenfield_potentials","Base",("wind-on",poly),round(float(potential_wind_on.at[poly])*1e3,1))
-                    except:
-                        pass
-
-                    weight = {"type":"map","index_type":"str","index_name":"to_level","data":{"PECD1":round(potential_wind_on.at[poly]/poparent_wind_on.at[poly[:2]],3)}}
-                    existing = 0.0
-                    profile = {"type":"time_series","data": dict(zip(CY_index["iso"],availability[tech].loc[CY_index["standard"],poly].round(3).tolist()))}
-                    
-                    add_relationship(db_map,"technology__region",(tech,poly))
-                    add_parameter_value(db_map,"technology__region","units_existing","Base",(tech,poly),existing)              
-                    add_parameter_value(db_map,"technology__region","weight_profile_upper_limit","Base",(tech,poly),weight)    
-                    add_parameter_value(db_map,"technology__region","profile_upper_limit","Base",(tech,poly),profile)
+                    add_region(db_map, poly, "onshore", "PECD2")
+                    add_technology_relationship(db_map, "wind-on", tech, poly, potential_wind_on.at[poly] - (existing_wind_on.at[poly] if poly in existing_wind_on.index else 0.0), availability[tech], CY_index)
         print("wind_on_future")
+
         ## ONSHORE SOLAR
         share = {"solar-PV-no-tracking":0.2,"solar-PV-rooftop":0.8,"solar-PV-tracking":0.0}
         technologies = ["solar-PV-no-tracking","solar-PV-rooftop","solar-PV-tracking"]
         for tech in technologies:
             for poly in existing_solar_PV.index:
                 if poly in availability[tech].columns and poly in potential_solar_PV.index:
+                    add_region(db_map, poly, "onshore", "PECD2")
+                    add_technology_relationship(db_map, "solar-PV", tech, poly, potential_solar_PV.at[poly] - (existing_solar_PV.at[poly] if poly in existing_solar_PV.index else 0.0), availability[tech], CY_index)
 
-                    try:
-                        add_entity(db_map,"region",poly)
-                        add_parameter_value(db_map,"region","type","Base",(poly,),"onshore")
-                        add_parameter_value(db_map,"region","GIS_level","Base",(poly,),"PECD2")
-                    except:
-                        pass
-                    try:
-                        add_relationship(db_map,"technology_type__region",("solar-PV",poly))
-                        add_parameter_value(db_map,"technology_type__region","greenfield_potentials","Base",("solar-PV",poly),round(float(potential_wind_on.at[poly])*1e3,1))
-                    except:
-                        pass
-                    
-                    weight = {"type":"map","index_type":"str","index_name":"to_level","data":{"PECD1":round(potential_solar_PV.at[poly]/poparent_solar_PV.at[poly[:2]],3)}}
                     existing = round(float(share[tech]*existing_solar_PV.at[poly]*1e3),1)
-                    profile = {"type":"time_series","data": dict(zip(CY_index["iso"],availability[tech].loc[CY_index["standard"],poly].round(3).tolist()))}
-
-                    add_relationship(db_map,"technology__region",(tech,poly))
-                    add_parameter_value(db_map,"technology__region","units_existing","Base",(tech,poly),existing)              
-                    add_parameter_value(db_map,"technology__region","weight_profile_upper_limit","Base",(tech,poly),weight)    
-                    add_parameter_value(db_map,"technology__region","profile_upper_limit","Base",(tech,poly),profile)
+                    add_entity(db_map,"technology__region",(tech,poly))
+                    add_parameter_value(db_map,"technology__region","units_existing","Base",(tech,poly),existing)  
         print("Solar-PV")
 
         ## OFFSHORE TECHNOLOGY
@@ -195,54 +154,25 @@ if __name__ == "__main__":
         for poly in existing_wind_off.index:
             tech = "wind-off-existing"
             if existing_wind_off.round(2).at[poly] > 0 and poly in availability[tech].columns:
-                try:
-                    add_entity(db_map,"region",poly)
-                    add_parameter_value(db_map,"region","type","Base",(poly,),"offshore")
-                    add_parameter_value(db_map,"region","GIS_level","Base",(poly,),"OFF3")
-                except:
-                    pass
-                try:
-                    add_relationship(db_map,"technology_type__region",("wind-off",poly))
-                    add_parameter_value(db_map,"technology_type__region","greenfield_potentials","Base",("wind-off",poly),round(float(potential_wind_off.at[poly])*1e3,1))
-                except:
-                    pass
+                add_region(db_map, poly, "offshore", "OFF3")
+                add_technology_relationship(db_map, "wind-off", tech, poly, potential_wind_off.at[poly] - (existing_wind_off.at[poly] if poly in existing_wind_off.index else 0.0), availability[tech], CY_index)
 
-                weight = {"type":"map","index_type":"str","index_name":"to_level","data":{"OFF2":round(existing_wind_off.at[poly]/exparent_wind_off.at[poly[:4]],3)}}
                 existing = round(float(existing_wind_off.at[poly]*1e3),1)
-                profile = {"type":"time_series","data": dict(zip(CY_index["iso"],availability[tech].loc[CY_index["standard"],poly].round(3).tolist()))}
-                
-                add_relationship(db_map,"technology__region",(tech,poly))
-                add_parameter_value(db_map,"technology__region","units_existing","Base",(tech,poly),existing)              
-                add_parameter_value(db_map,"technology__region","weight_profile_upper_limit","Base",(tech,poly),weight)    
-                add_parameter_value(db_map,"technology__region","profile_upper_limit","Base",(tech,poly),profile)
-
+                add_entity(db_map,"technology__region",(tech,poly))
+                add_parameter_value(db_map,"technology__region","units_existing","Base",(tech,poly),existing)    
         print("existing_wind_offshore")
 
         ### OFFSHORE FUTURE
         technologies = ["wind-off-FB-SP316-HH155","wind-off-FB-SP370-HH155"]
         for tech in technologies:
-            for poly in availability[tech].columns:   
+            for poly in availability[tech].columns:    
                 if poly in potential_wind_off.index:
-                    try:
-                        add_entity(db_map,"region",poly)
-                        add_parameter_value(db_map,"region","type","Base",(poly,),"offshore")
-                        add_parameter_value(db_map,"region","GIS_level","Base",(poly,),"OFF3")
-                    except:
-                        pass
-                    try:
-                        add_relationship(db_map,"technology_type__region",("wind-off",poly))
-                        add_parameter_value(db_map,"technology_type__region","greenfield_potentials","Base",("wind-off",poly),round(float(potential_wind_off.at[poly])*1e3,1))
-                    except:
-                        pass
-
-                    weight = {"type":"map","index_type":"str","index_name":"to_level","data":{"OFF2":round(potential_wind_off.at[poly]/poparent_wind_off.at[poly[:4]],3)}}
-                    existing = 0.0
-                    profile = {"type":"time_series","data": dict(zip(CY_index["iso"],availability[tech].loc[CY_index["standard"],poly].round(3).tolist()))}
-                    
-                    add_relationship(db_map,"technology__region",(tech,poly))
-                    add_parameter_value(db_map,"technology__region","units_existing","Base",(tech,poly),existing)              
-                    add_parameter_value(db_map,"technology__region","weight_profile_upper_limit","Base",(tech,poly),weight)    
-                    add_parameter_value(db_map,"technology__region","profile_upper_limit","Base",(tech,poly),profile)
+                    add_region(db_map, poly, "offshore", "OFF3")
+                    add_technology_relationship(db_map, "wind-off", tech, poly, potential_wind_off.at[poly] - (existing_wind_off.at[poly] if poly in existing_wind_off.index else 0.0), availability[tech], CY_index)
         print("wind_off_future")
 
         db_map.commit_session("entities added")
+
+if __name__ == "__main__":
+    main()
+    
