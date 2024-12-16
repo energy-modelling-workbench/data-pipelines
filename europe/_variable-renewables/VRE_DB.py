@@ -51,22 +51,24 @@ def add_technology_relationship(db_map, tech_type, tech, poly, potential, availa
     add_entity(db_map, "technology__to_commodity__region", (tech, "elec",poly))
     add_parameter_value(db_map, "technology__to_commodity__region", "profile_limit_upper", "Base", (tech, "elec",poly), profile)
 
+def path_to_file(file_list,file):
+    return [element for element in file_list if file in element][0]
+
 def main():
 
     url_db_out = sys.argv[1]
-    
-    existing_wind_on = read_excel_data("capacity_wind-on-existing.xlsx", "Regional", 0, 2025)
-    existing_wind_off = read_excel_data("capacity_wind-off-existing.xlsx", "Regional", 0, 2025)
-    existing_solar_PV = read_excel_data("capacity_solar-PV-existing.xlsx", "Regional", 0, 2025)
-    potential_wind_on = read_excel_data("potential_wind-on.xlsx", "Data", 0, "Greenfield_potential_GW")
-    potential_wind_off = read_excel_data("potential_wind-off.xlsx", "Data", 0, "Greenfield_potential_GW")
-    potential_solar_PV = read_excel_data("potential_solar-PV.xlsx", "Data", 0, "Greenfield_potential_GW")
+    existing_wind_on = read_excel_data(path_to_file(sys.argv[1:],"capacity_wind-on-existing.xlsx"), "Regional", 0, 2025)
+    existing_wind_off = read_excel_data(path_to_file(sys.argv[1:],"capacity_wind-off-existing.xlsx"), "Regional", 0, 2025)
+    existing_solar_PV = read_excel_data(path_to_file(sys.argv[1:],"capacity_solar-PV-existing.xlsx"), "Regional", 0, 2025)
+    potential_wind_on = read_excel_data(path_to_file(sys.argv[1:],"potential_wind-on.xlsx"), "Data", 0, "Greenfield_potential_GW")
+    potential_wind_off = read_excel_data(path_to_file(sys.argv[1:],"potential_wind-off.xlsx"), "Bottom_fixed_max120kmFromShore", 0, "Greenfield_potential_GW")
+    potential_solar_PV = read_excel_data(path_to_file(sys.argv[1:],"potential_solar-PV.xlsx"), "Data", 0, "Greenfield_potential_GW")
 
     # Read VRE costs
-    vre_cost = pd.read_csv("VRE_costs.csv",index_col=0)
+    vre_cost = pd.read_csv(path_to_file(sys.argv[1:],"VRE_costs.csv"),index_col=0)
 
     # Read availability data
-    availability = {tech: pd.read_csv(f"{tech}.csv", index_col=0) for tech in vre_cost.index}
+    availability = {tech: pd.read_csv(path_to_file(sys.argv[1:],f"{tech}.csv"), index_col=0) for tech in vre_cost.index}
 
     print("Data loaded")
 
@@ -136,7 +138,7 @@ def main():
         print("wind_on_future")
 
         ## ONSHORE SOLAR
-        share = {"solar-PV-no-tracking":0.2,"solar-PV-rooftop":0.8,"solar-PV-tracking":0.0}
+        share = {"solar-PV-no-tracking":0.8,"solar-PV-rooftop":0.2,"solar-PV-tracking":0.0}
         technologies = ["solar-PV-no-tracking","solar-PV-rooftop","solar-PV-tracking"]
         for tech in technologies:
             for poly in existing_solar_PV.index:
