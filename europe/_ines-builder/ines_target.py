@@ -61,80 +61,93 @@ def user_entity_condition(config,entity_class_elements,entity_names,poly,poly_ty
 
     return entity_target_names,definition_condition,poly_level
 
-def spatial_transformation(db_source, config_global, config_sys, entity_class, entity_class_region, entity_class_target, param_source):
+def ines_aggregrate(db_source : DatabaseMapping,transformer_df : pd.DataFrame,target_poly : str ,entity_class : tuple,entity_names : tuple,alternative : str,source_parameter : str,weight : str,defaults = None) -> dict:
+
+    # db_source : Spine DB
+    # transforme : dataframes
+    # target/source_poly : spatial resolution name
+    # weight : conversion factor 
+    # defaults : default value implemented
+
+    value_ = None
+        
+    for source_poly in transformer_df.loc[transformer_df.target == target_poly,"source"].tolist():
+        
+        entity_bynames = entity_names+(source_poly,)
+        multiplier = transformer_df.loc[transformer_df.source == source_poly,weight].tolist()[0]
+        parameter_value = db_source.get_parameter_value_item(entity_class_name=entity_class,entity_byname=entity_bynames,parameter_definition_name=source_parameter,alternative_name=alternative)
+        
+        if parameter_value:
+            if parameter_value["type"] == "time_series":
+                param_value = json.loads(parameter_value["value"].decode("utf-8"))["data"]
+                keys = list(param_value.keys())
+                vals = multiplier*np.fromiter(param_value.values(), dtype=float)
+                if not value_:
+                    value_ = {"type":"time_series","data":dict(zip(keys,vals))}
+                else:
+                    prev_vals = np.fromiter(value_["data"].values(), dtype=float)
+                    value_ = {"type":"time_series","data":dict(zip(keys,prev_vals + vals))}                 
+            elif parameter_value["type"] == "float":
+                value_ = value_ + multiplier*parameter_value["parsed_value"] if value_ else multiplier*parameter_value["parsed_value"]
+            # ADD MORE Parameter Types HERE            
+        elif defaults != None:
+            value_ = defaults if not value_ else value_+defaults
     
-    result = {}
-    entities = db_source.get_entity_items(entity_class_name = entity_class)
-    for entity in entities:
-        entity_name = entity["name"]
-        entity_class_elements = (entity_class,) if len(entity["dimension_name_list"]) == 0 else entity["dimension_name_list"]
-        entity_names          = (entity_name,) if len(entity["element_name_list"]) == 0 else entity["element_name_list"]
-        result[entity_name] = {}
-        poly_type = "off" if "wind-off" in entity_name else "on"
-        for poly in config_global[f"{poly_type}shore_polygons"]:
-            entity_target_names,definition_condition,target_level = user_entity_condition(config_global,entity_class_elements,entity_names,poly,poly_type)
-
-            if definition_condition == True:
-                value_ = None
-                param_list_target = config_sys[entity_class_region][entity_class_target][param_source]
-                multipliers = param_list_target[2]
-                if not multipliers[1]:
-                    multiplier_choosen = multipliers[0] 
-                else:
-                    for particular_case in multipliers[1]:
-                        multiplier_choosen = multipliers[1][particular_case] if any(particular_case in entity_item for entity_item in entity_names) else multipliers[0]
-                        break
-                    
-                defaults = param_list_target[3]
-                source_level = param_list_target[4][poly_type] if isinstance(param_list_target[4],dict) else param_list_target[4]
-                if source_level != target_level:
-                    transformer_df = config_global["transformer"][f"{source_level}_{target_level}"]
-                    for source_poly in transformer_df.loc[transformer_df.target == poly,"source"].tolist():
-                        entity_bynames = entity_names+(source_poly,)
-                        multiplier = transformer_df.loc[transformer_df.source == source_poly,multiplier_choosen].tolist()[0]
-                        start_time = time_lib.time()
-                        parameter_value = db_source.get_parameter_value_item(entity_class_name=entity_class_region,entity_byname=entity_bynames,parameter_definition_name=param_source,alternative_name="Base")
-                        # print(f"Calling data from spine DB {entity_name} {poly} {source_poly}: {time_lib.time()-start_time} s")
-                        if parameter_value:
-                            if parameter_value["type"] == "time_series":
-                                param_value = json.loads(parameter_value["value"].decode("utf-8"))["data"]
-                                keys = list(param_value.keys())
-                                vals = multiplier*np.fromiter(param_value.values(), dtype=float)
-                                if not value_:
-                                    value_ = {"type":"time_series","data":dict(zip(keys,vals))}
-                                else:
-                                    prev_vals = np.fromiter(value_["data"].values(), dtype=float)
-                                    value_ = {"type":"time_series","data":dict(zip(keys,prev_vals + vals))}                 
-                            elif parameter_value["type"] == "float":
-                                value_ = value_ + multiplier*parameter_value["parsed_value"] if value_ else multiplier*parameter_value["parsed_value"]
-                        elif defaults != None:
-                            value_ = defaults if not value_ else value_+defaults
-                else:
-                    entity_bynames = entity_names+(poly,)
-                    parameter_value = db_source.get_parameter_value_item(entity_class_name=entity_class_region,entity_byname=entity_bynames,parameter_definition_name=param_source,alternative_name="Base")
-                    if parameter_value:
-                        if parameter_value["type"] == "time_series":
-                            param_value = json.loads(parameter_value["value"].decode("utf-8"))["data"]
-                            keys = list(param_value.keys())
-                            vals = np.fromiter(param_value.values(), dtype=float)
-                            value_ = {"type":"time_series","data":dict(zip(keys,vals))}               
-                        elif parameter_value["type"] == "float":
-                            value_ = parameter_value["parsed_value"]
-                    elif defaults != None:
-                        value_ = defaults
-                result[entity_name][poly] = value_
-    return result
-
-def calculate_spatial_data(db_source, config, sector):
+    return value_
+        
+def spatial_transformation(db_source, config, sector):
+    
     spatial_data = {}
     for entity_class in config["sys"][sector]["entities"]:
         entity_class_region = f"{entity_class}__region"
         dynamic_params = config["sys"][sector]["parameters"]["dynamic"].get(entity_class_region, {})
+        
         if dynamic_params:
             spatial_data[entity_class] = {}
-            for param_entity_target, param_source_dict in dynamic_params.items():
-                for param_source in param_source_dict:
-                    spatial_data[entity_class][param_source] = spatial_transformation(db_source, config, config["sys"][sector]["parameters"]["dynamic"], entity_class, entity_class_region, param_entity_target, param_source)
+            for entity_class_target, param_source_dict in dynamic_params.items():
+                for source_parameter in param_source_dict:
+                    spatial_data[entity_class][source_parameter] = {}
+                    entities = db_source.get_entity_items(entity_class_name = entity_class)
+                    for entity in entities:
+                        entity_name = entity["name"]
+                        entity_class_elements = (entity_class,) if len(entity["dimension_name_list"]) == 0 else entity["dimension_name_list"]
+                        entity_names          = (entity_name,) if len(entity["element_name_list"]) == 0 else entity["element_name_list"]
+                        
+                        spatial_data[entity_class][source_parameter][entity_name] = {}
+                        poly_type = "off" if "wind-off" in entity_name else "on"
+
+                        param_list_target = dynamic_params[entity_class_target][source_parameter]  
+                        defaults = param_list_target[3]
+                        source_level = param_list_target[4][poly_type] if isinstance(param_list_target[4],dict) else param_list_target[4]     
+                        multipliers = param_list_target[2]
+                        if not multipliers[1]:
+                            weight = multipliers[0] 
+                        else:
+                            for particular_case in multipliers[1]:
+                                weight = multipliers[1][particular_case] if any(particular_case in entity_item for entity_item in entity_names) else multipliers[0]
+                                break
+
+                        for target_poly in config[f"{poly_type}shore_polygons"]:
+                            _,definition_condition,target_level = user_entity_condition(config,entity_class_elements,entity_names,target_poly,poly_type)
+
+                            if definition_condition == True:
+                                
+                                if source_level != target_level:  
+                                    spatial_data[entity_class][source_parameter][entity_name][target_poly] = ines_aggregrate(db_source,config["transformer"][f"{source_level}_{target_level}"],target_poly,entity_class_region,entity_names,"Base",source_parameter,weight,defaults)
+                                else:
+                                    entity_bynames = entity_names+(target_poly,)
+                                    parameter_value = db_source.get_parameter_value_item(entity_class_name=entity_class_region,entity_byname=entity_bynames,parameter_definition_name=source_parameter,alternative_name="Base")
+                                    if parameter_value:
+                                        if parameter_value["type"] == "time_series":
+                                            param_value = json.loads(parameter_value["value"].decode("utf-8"))["data"]
+                                            keys = list(param_value.keys())
+                                            vals = np.fromiter(param_value.values(), dtype=float)
+                                            value_ = {"type":"time_series","data":dict(zip(keys,vals))}               
+                                        elif parameter_value["type"] == "float":
+                                            value_ = parameter_value["parsed_value"]
+                                    elif defaults != None:
+                                        value_ = defaults
+                                    spatial_data[entity_class][source_parameter][entity_name][target_poly] = value_   
     return spatial_data
 
 def add_nodes(db_map : DatabaseMapping, db_com : DatabaseMapping, config : dict) -> None:
@@ -171,7 +184,7 @@ def add_power_sector(db_map : DatabaseMapping, db_source : DatabaseMapping, conf
 
     db_name = "power_sector"
     start_time = time_lib.time()
-    region_params = calculate_spatial_data(db_source, config, db_name)
+    region_params = spatial_transformation(db_source, config, db_name)
     print(f"Time Calculating Aggregation: {time_lib.time()-start_time} s")
 
     print("ADDING POWER ELEMENTS")
@@ -238,7 +251,7 @@ def add_power_sector(db_map : DatabaseMapping, db_source : DatabaseMapping, conf
 def add_vre_sector(db_map : DatabaseMapping, db_source : DatabaseMapping, config : dict) -> None:
 
     start_time = time_lib.time()
-    region_params = calculate_spatial_data(db_source, config, "vre")
+    region_params = spatial_transformation(db_source, config, "vre")
     print(f"Time Calculating Aggregation: {time_lib.time()-start_time} s")
     print("ADDING VRE ELEMENTS")
     for entity_class in config["sys"]["vre"]["entities"]:
@@ -345,11 +358,23 @@ def main():
     url_db_pow = sys.argv[3]
     url_db_vre = sys.argv[4]
     url_db_tra = sys.argv[5]
+    url_db_hyd = sys.argv[6]
+    url_db_dem = sys.argv[7]
+    url_db_hea = sys.argv[8]
+    url_db_veh = sys.argv[9]
+    url_db_bio = sys.argv[10]
+    url_db_ind = sys.argv[11]
 
     db_com = DatabaseMapping(url_db_com)
     db_pow = DatabaseMapping(url_db_pow)
     db_vre = DatabaseMapping(url_db_vre)
     db_tra = DatabaseMapping(url_db_tra)
+    db_hyd = DatabaseMapping(url_db_hyd)
+    db_dem = DatabaseMapping(url_db_dem)
+    db_hea = DatabaseMapping(url_db_hea)
+    db_veh = DatabaseMapping(url_db_veh)
+    db_bio = DatabaseMapping(url_db_bio)
+    db_ind = DatabaseMapping(url_db_ind)
     
     with open("ines_structure.json", 'r') as f:
         ines_spec = json.load(f)
@@ -382,20 +407,20 @@ def main():
         db_map.commit_session("nodes_added")
 
         # Power Sector Representation
-        '''add_power_sector(db_map,db_pow,config)
+        add_power_sector(db_map,db_pow,config)
         print("power_sector_added")
-        db_map.commit_session("power_sector_added")'''
+        db_map.commit_session("power_sector_added")
 
 
         # Power vre Representation
-        '''add_vre_sector(db_map,db_vre,config)
+        add_vre_sector(db_map,db_vre,config)
         print("vre_added")
-        db_map.commit_session("vre_added")'''
+        db_map.commit_session("vre_added")
 
         # Power Transmission Representation
-        add_power_transmission(db_map,db_tra,config)
+        '''add_power_transmission(db_map,db_tra,config)
         print("power_transmission_added")
-        db_map.commit_session("power_transmission_added")
+        db_map.commit_session("power_transmission_added")'''
 
 
 
